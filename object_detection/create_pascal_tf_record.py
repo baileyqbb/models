@@ -39,18 +39,20 @@ from object_detection.utils import label_map_util
 
 flags = tf.app.flags
 flags.DEFINE_string('data_dir', '', 'Root directory to raw PASCAL VOC dataset.')
-flags.DEFINE_enum('set', 'train', ['train', 'val', 'trainval', 'test'],
-                  'Convert training set, validation set or merged set.')
+flags.DEFINE_string('set', 'train', 'Convert training set, validation set or '
+                    'merged set.')
 flags.DEFINE_string('annotations_dir', 'Annotations',
                     '(Relative) path to annotations directory.')
-flags.DEFINE_enum('year', 'VOC2007', ['VOC2007', 'VOC2012', 'merged'],
-                  'Desired challenge year.')
+flags.DEFINE_string('year', 'VOC2007', 'Desired challenge year.')
 flags.DEFINE_string('output_path', '', 'Path to output TFRecord')
 flags.DEFINE_string('label_map_path', 'data/pascal_label_map.pbtxt',
                     'Path to label map proto')
 flags.DEFINE_boolean('ignore_difficult_instances', False, 'Whether to ignore '
                      'difficult instances')
 FLAGS = flags.FLAGS
+
+SETS = ['train', 'val', 'trainval', 'test']
+YEARS = ['VOC2007', 'VOC2012', 'merged']
 
 
 def dict_to_tf_example(data,
@@ -81,7 +83,7 @@ def dict_to_tf_example(data,
   """
   img_path = os.path.join(data['folder'], image_subdirectory, data['filename'])
   full_path = os.path.join(dataset_directory, img_path)
-  with tf.gfile.GFile(full_path) as fid:
+  with tf.gfile.GFile(full_path, 'rb') as fid:
     encoded_jpg = fid.read()
   encoded_jpg_io = io.BytesIO(encoded_jpg)
   image = PIL.Image.open(encoded_jpg_io)
@@ -112,19 +114,21 @@ def dict_to_tf_example(data,
     ymin.append(float(obj['bndbox']['ymin']) / height)
     xmax.append(float(obj['bndbox']['xmax']) / width)
     ymax.append(float(obj['bndbox']['ymax']) / height)
-    classes_text.append(obj['name'])
+    classes_text.append(obj['name'].encode('utf8'))
     classes.append(label_map_dict[obj['name']])
     truncated.append(int(obj['truncated']))
-    poses.append(obj['pose'])
+    poses.append(obj['pose'].encode('utf8'))
 
   example = tf.train.Example(features=tf.train.Features(feature={
       'image/height': dataset_util.int64_feature(height),
       'image/width': dataset_util.int64_feature(width),
-      'image/filename': dataset_util.bytes_feature(data['filename']),
-      'image/source_id': dataset_util.bytes_feature(data['filename']),
-      'image/key/sha256': dataset_util.bytes_feature(key),
+      'image/filename': dataset_util.bytes_feature(
+          data['filename'].encode('utf8')),
+      'image/source_id': dataset_util.bytes_feature(
+          data['filename'].encode('utf8')),
+      'image/key/sha256': dataset_util.bytes_feature(key.encode('utf8')),
       'image/encoded': dataset_util.bytes_feature(encoded_jpg),
-      'image/format': dataset_util.bytes_feature('jpeg'),
+      'image/format': dataset_util.bytes_feature('jpeg'.encode('utf8')),
       'image/object/bbox/xmin': dataset_util.float_list_feature(xmin),
       'image/object/bbox/xmax': dataset_util.float_list_feature(xmax),
       'image/object/bbox/ymin': dataset_util.float_list_feature(ymin),
@@ -139,6 +143,11 @@ def dict_to_tf_example(data,
 
 
 def main(_):
+  if FLAGS.set not in SETS:
+    raise ValueError('set must be in : {}'.format(SETS))
+  if FLAGS.year not in YEARS:
+    raise ValueError('year must be in : {}'.format(YEARS))
+
   data_dir = FLAGS.data_dir
   years = ['VOC2007', 'VOC2012']
   if FLAGS.year != 'merged':
